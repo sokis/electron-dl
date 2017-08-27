@@ -8,111 +8,111 @@ const extName = require('ext-name');
 const app = electron.app;
 const shell = electron.shell;
 
-function getFilenameFromMime(name, mime) {
-	const exts = extName.mime(mime);
+function getFilenameFromMime (name, mime) {
+  const exts = extName.mime(mime);
 
-	if (exts.length !== 1) {
-		return name;
-	}
+  if (exts.length !== 1) {
+    return name;
+  }
 
-	return `${name}.${exts[0].ext}`;
+  return `${name}.${exts[0].ext}`;
 }
 
-function registerListener(session, opts = {}, cb = () => {}) {
-	const listener = (e, item, webContents) => {
-		let hostWebContents = webContents;
-		if (webContents.getType() === 'webview') {
-			hostWebContents = webContents.hostWebContents;
-		}
-		const win = (electron.BrowserWindow || electron.remote.BrowserWindow).fromWebContents(hostWebContents);   
-		const totalBytes = item.getTotalBytes();
-		const dir = opts.directory || app.getPath('downloads');
-		let filePath;
+function registerListener (session, opts = {}, cb = () => { }) {
+  const listener = (e, item, webContents) => {
+    let hostWebContents = webContents;
+    if (webContents.getType() === 'webview') {
+      hostWebContents = webContents.hostWebContents;
+    }
 
-		if (opts.filename) {
-			filePath = path.join(dir, opts.filename);
-		} else {
-			const filename = item.getFilename();
-			const name = path.extname(filename) ? filename : getFilenameFromMime(filename, item.getMimeType());
+    const win = (electron.BrowserWindow || electron.remote.BrowserWindow).fromWebContents(hostWebContents);
+    const totalBytes = item.getTotalBytes();
+    const dir = opts.directory || app.getPath('downloads');
+    const filename = item.getFilename();
+    let filePath;
 
-			filePath = unusedFilename.sync(path.join(dir, name));
-		}
+    if (opts.filename) {
+      filePath = path.join(dir, opts.filename);
+    } else {
+      const name = path.extname(filename) ? filename : getFilenameFromMime(filename, item.getMimeType());
 
-		const errorMessage = opts.errorMessage || 'The download of {filename} was interrupted';
-		const errorTitle = opts.errorTitle || 'Download Error';
-		const canceledMessage = opts.canceledMessage || 'The download of {filename} was canceled';
+      filePath = unusedFilename.sync(path.join(dir, name));
+    }
 
-		if (!opts.saveAs) {
-			item.setSavePath(filePath);
-		}
+    const errorMessage = opts.errorMessage || 'The download of {filename} was interrupted';
+    const errorTitle = opts.errorTitle || 'Download Error';
+    const canceledMessage = opts.canceledMessage || 'The download of {filename} was canceled';
 
-		item.on('updated', () => {
-			const ratio = item.getReceivedBytes() / totalBytes;
-			if (!win.isDestroyed()) {
-				win.setProgressBar(ratio);
-			}
+    if (!opts.saveAs) {
+      item.setSavePath(filePath);
+    }
 
-			if (typeof opts.onProgress === 'function') {
-				opts.onProgress(ratio);
-			}
+    item.on('updated', () => {
+      const ratio = item.getReceivedBytes() / totalBytes;
+      if (!win.isDestroyed()) {
+        win.setProgressBar(ratio);
+      }
 
-			if (typeof opts.onCancel === 'function') {
-				if (opts.onCancel()) {
-					item.cancel();
-				}
-			}
-		});
+      if (typeof opts.onProgress === 'function') {
+        opts.onProgress(ratio);
+      }
 
-		item.on('done', (e, state) => {
-			if (!win.isDestroyed()) {
-				win.setProgressBar(-1);
-			}
+      if (typeof opts.onCancel === 'function') {
+        if (opts.onCancel()) {
+          item.cancel();
+        }
+      }
+    });
 
-			if (state === 'interrupted') {
-				const message = pupa(errorMessage, {filename: item.getFilename()});
-				electron.dialog.showErrorBox(errorTitle, message);
-				cb(new Error(message));
-			} else if (state === 'cancelled') {
-				const message = pupa(canceledMessage, {filename: item.getFilename()});
-				electron.dialog.showErrorBox(errorTitle, message);
-				cb(new Error(message));
-			} else if (state === 'completed') {
-				if (process.platform === 'darwin') {
-					app.dock.downloadFinished(filePath);
-				}
+    item.on('done', (e, state) => {
+      if (!win.isDestroyed()) {
+        win.setProgressBar(-1);
+      }
 
-				if (opts.openFolderWhenDone) {
-					shell.showItemInFolder(filePath);
-				}
+      if (state === 'interrupted') {
+        const message = pupa(errorMessage, { filename });
+        // electron.dialog.showErrorBox(errorTitle, message);
+        cb(new Error(message));
+      } else if (state === 'cancelled') {
+        const message = pupa(canceledMessage, { filename });
+        // electron.dialog.showErrorBox(errorTitle, message);
+        cb(new Error(message));
+      } else if (state === 'completed') {
+        if (process.platform === 'darwin') {
+          app.dock.downloadFinished(filePath);
+        }
 
-				if (opts.unregisterWhenDone) {
-					session.removeListener('will-download', listener);
-				}
+        if (opts.openFolderWhenDone) {
+          shell.showItemInFolder(filePath);
+        }
 
-				cb(null, item);
-			}
-		});
-	};
+        cb(null, item);
+      }
+      if (opts.unregisterWhenDone) {
+        session.removeListener('will-download', listener);
+      }
+    });
+  };
 
-	session.on('will-download', listener);
+  session.on('will-download', listener);
 }
 
 module.exports = (opts = {}) => {
-	app.on('session-created', session => {
-		registerListener(session, opts);
-	});
+  app.on('session-created', session => {
+    registerListener(session, opts);
+  });
 };
 
 module.exports.download = (win, url, opts) => new Promise((resolve, reject) => {
-	opts = Object.assign({}, opts, {unregisterWhenDone: true});
+  opts = Object.assign({}, opts, { unregisterWhenDone: true });
 
-	registerListener(win.webContents.session, opts, (err, item) => {
-		if (err) {
-			reject(err);
-		} else {
-			resolve(item);
-		}
-	});
+  registerListener(win.webContents.session, opts, (err, item) => {
+    if (err) {
+      reject(err);
+    } else {
+      resolve(item);
+    }
+  });
 
-	win.webContents.downloadURL(url);
+  win.webContents.downloadURL(url);
 });
