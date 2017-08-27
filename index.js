@@ -24,8 +24,7 @@ function registerListener(session, opts = {}, cb = () => {}) {
 		if (webContents.getType() === 'webview') {
 			hostWebContents = webContents.hostWebContents;
 		}
-
-		const win = electron.BrowserWindow.fromWebContents(hostWebContents);
+		const win = (electron.BrowserWindow || electron.remote.BrowserWindow).fromWebContents(hostWebContents);   
 		const totalBytes = item.getTotalBytes();
 		const dir = opts.directory || app.getPath('downloads');
 		let filePath;
